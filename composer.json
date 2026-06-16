@@ -1,0 +1,25 @@
+{
+    "name": "sendbyte/sendbyte-php",
+    "description": "SendByte PHP SDK: the email API for Africa. Laravel-friendly.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["email", "api", "transactional", "africa", "laravel"],
+    "homepage": "https://sendbyte.africa",
+    "support": {
+        "issues": "https://github.com/Sendbyte-Africa/sendbyte-php/issues",
+        "source": "https://github.com/Sendbyte-Africa/sendbyte-php"
+    },
+    "require": {
+        "php": ">=8.0",
+        "ext-curl": "*",
+        "ext-json": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "SendByte\\": "src/"
+        }
+    },
+    "scripts": {
+        "test": "php tests/run.php"
+    }
+}
