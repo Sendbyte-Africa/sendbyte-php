@@ -17,6 +17,8 @@ namespace SendByte;
  *
  * Requires ext-curl and ext-json only. A custom transport callable can be
  * injected for testing: fn(string $method, string $url, array $headers, ?string $body): array{int, string}
+ * The $timeoutSeconds setting bounds only the built-in curl transport; a custom
+ * transport is responsible for enforcing its own timeout.
  */
 class SendByte
 {
