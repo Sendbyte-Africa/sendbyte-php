@@ -22,7 +22,7 @@ namespace SendByte;
  */
 class SendByte
 {
-    public const VERSION = '0.2.0';
+    public const VERSION = '0.3.0';
     public const SIGNATURE_HEADER = 'sendbyte-signature';
     private const DEFAULT_BASE_URL = 'https://api.sendbyte.africa';
     private const DEFAULT_MAX_ATTEMPTS = 3;
@@ -98,7 +98,132 @@ class SendByte
         return $this->request('GET', "/v1/emails{$query}");
     }
 
+    /** Sent and received messages in the email's thread. Returns {thread_id, replies, data}. */
+    public function getEmailConversation(string $emailId): array
+    {
+        return $this->request('GET', "/v1/emails/{$emailId}/conversation");
+    }
+
     /* ---------------- Domains ---------------- */
+
+    // --- Marketing -------------------------------------------------------
+    //
+    // Brands hold lists, lists hold subscribers. A subscriber's status belongs
+    // to the list, not to the person, which is why every call here takes both.
+
+    /** @param array<string, mixed> $options */
+    public function createBrand(string $name, array $options = []): array
+    {
+        return $this->request('POST', '/v1/brands', ['name' => $name] + $options);
+    }
+
+    public function listBrands(): array
+    {
+        return $this->request('GET', '/v1/brands');
+    }
+
+    public function getBrand(string $brandId): array
+    {
+        return $this->request('GET', "/v1/brands/{$brandId}");
+    }
+
+    /** @param array<string, mixed> $options */
+    public function createList(string $brandId, string $name, array $options = []): array
+    {
+        return $this->request('POST', "/v1/brands/{$brandId}/lists", ['name' => $name] + $options);
+    }
+
+    public function listLists(string $brandId): array
+    {
+        return $this->request('GET', "/v1/brands/{$brandId}/lists");
+    }
+
+    /**
+     * Add someone to a list.
+     *
+     * On a double opt-in list they land as unconfirmed and are never mailed
+     * until they confirm. Anyone who previously unsubscribed or bounced stays
+     * off: the response carries skipped_reason rather than the call failing.
+     *
+     * @param array<string, mixed> $options
+     */
+    public function addSubscriber(string $brandId, string $listId, string $email, array $options = []): array
+    {
+        return $this->request(
+            'POST',
+            "/v1/brands/{$brandId}/lists/{$listId}/subscribers",
+            ['email' => $email] + $options
+        );
+    }
+
+    /** @param array<string, mixed> $params */
+    public function listSubscribers(string $brandId, string $listId, array $params = []): array
+    {
+        $query = $params ? '?' . http_build_query($params) : '';
+        return $this->request('GET', "/v1/brands/{$brandId}/lists/{$listId}/subscribers{$query}");
+    }
+
+    /**
+     * Batch import, up to 1,000 rows per call. Reports every rejected row.
+     *
+     * @param list<array<string, mixed>> $subscribers
+     */
+    public function importSubscribers(string $brandId, string $listId, array $subscribers): array
+    {
+        return $this->request(
+            'POST',
+            "/v1/brands/{$brandId}/lists/{$listId}/import",
+            ['subscribers' => $subscribers]
+        );
+    }
+
+    public function setSubscriberStatus(
+        string $brandId,
+        string $listId,
+        string $subscriberId,
+        string $status
+    ): array {
+        return $this->request(
+            'PATCH',
+            "/v1/brands/{$brandId}/lists/{$listId}/subscribers/{$subscriberId}",
+            ['status' => $status]
+        );
+    }
+
+    /** @param array<string, mixed> $params */
+    public function createCampaign(string $brandId, array $params): array
+    {
+        return $this->request('POST', "/v1/brands/{$brandId}/campaigns", $params);
+    }
+
+    public function listCampaigns(string $brandId): array
+    {
+        return $this->request('GET', "/v1/brands/{$brandId}/campaigns");
+    }
+
+    /**
+     * Freeze the audience and send.
+     *
+     * The audience is snapshotted at this moment: somebody who joins afterwards
+     * is not included, somebody who leaves before their turn is skipped, and a
+     * person on two of the chosen lists receives one email.
+     *
+     * @param list<string> $listIds
+     * @param array<string, mixed> $options
+     */
+    public function sendCampaign(string $brandId, string $campaignId, array $listIds, array $options = []): array
+    {
+        return $this->request(
+            'POST',
+            "/v1/brands/{$brandId}/campaigns/{$campaignId}/send",
+            ['list_ids' => $listIds] + $options
+        );
+    }
+
+    public function getCampaignReport(string $brandId, string $campaignId): array
+    {
+        return $this->request('GET', "/v1/brands/{$brandId}/campaigns/{$campaignId}/report");
+    }
 
     public function createDomain(string $domain): array
     {
@@ -147,6 +272,128 @@ class SendByte
         return $this->request('POST', "/v1/webhooks/deliveries/{$deliveryId}/replay");
     }
 
+    /** Receiving settings for the project, including each domain's MX setup. */
+    public function getReceiving(): array
+    {
+        return $this->request('GET', '/v1/receiving');
+    }
+
+    /** Turn on receiving. Received emails count toward your sending quota; spam does not. */
+    public function enableReceiving(): array
+    {
+        return $this->request('POST', '/v1/receiving/enable', ['acknowledge_quota' => true]);
+    }
+
+    public function disableReceiving(): array
+    {
+        return $this->request('POST', '/v1/receiving/disable', []);
+    }
+
+    /** Send a test email to one of the project's receiving addresses. */
+    public function sendReceivingTest(string $to): array
+    {
+        return $this->request('POST', '/v1/receiving/test', ['to' => $to]);
+    }
+
+    /** Check whether a receiving subdomain is free to use before enabling it. */
+    public function getDomainReceivingPreflight(string $domainId, string $subdomain = 'inbound'): array
+    {
+        $query = http_build_query(['subdomain' => $subdomain]);
+        return $this->request('GET', "/v1/domains/{$domainId}/receiving/preflight?{$query}");
+    }
+
+    /** Set up receiving on a domain. Returns the MX record to publish. */
+    public function enableDomainReceiving(string $domainId, string $subdomain = 'inbound'): array
+    {
+        return $this->request('POST', "/v1/domains/{$domainId}/receiving", ['subdomain' => $subdomain]);
+    }
+
+    /** Re-check the domain's receiving MX record now. */
+    public function checkDomainReceiving(string $domainId): array
+    {
+        return $this->request('POST', "/v1/domains/{$domainId}/receiving/check", []);
+    }
+
+    public function disableDomainReceiving(string $domainId): array
+    {
+        return $this->request('DELETE', "/v1/domains/{$domainId}/receiving");
+    }
+
+    /**
+     * List received emails, newest first. `status` takes a comma list or an array.
+     * @param array{status?: string|list<string>, domain_id?: string, search?: string, days?: int, limit?: int, before?: string} $params
+     */
+    public function listReceivedEmails(array $params = []): array
+    {
+        if (isset($params['status']) && is_array($params['status'])) {
+            $params['status'] = implode(',', $params['status']);
+        }
+        $query = $params === [] ? '' : '?' . http_build_query($params);
+        return $this->request('GET', "/v1/received{$query}");
+    }
+
+    /** A received email with its body, headers, attachments and conversation. */
+    public function getReceivedEmail(string $receivedId): array
+    {
+        return $this->request('GET', "/v1/received/{$receivedId}");
+    }
+
+    /** Received email counts by outcome over the last $days days. */
+    public function getReceivedStats(int $days = 30, ?string $domainId = null): array
+    {
+        $params = ['days' => $days];
+        if ($domainId !== null) {
+            $params['domain_id'] = $domainId;
+        }
+        return $this->request('GET', '/v1/received/stats?' . http_build_query($params));
+    }
+
+    /** A short-lived download URL for one attachment. */
+    public function getReceivedAttachment(string $receivedId, string $attachmentId): array
+    {
+        return $this->request('GET', "/v1/received/{$receivedId}/attachments/{$attachmentId}");
+    }
+
+    /** A short-lived download URL for the original MIME message. */
+    public function getReceivedRaw(string $receivedId): array
+    {
+        return $this->request('GET', "/v1/received/{$receivedId}/raw");
+    }
+
+    /**
+     * Reply in the same thread. Pass text or html; retries reuse one idempotency key.
+     * @param array{from?: string, text?: string, html?: string, subject?: string, reply_all?: bool, idempotency_key?: string} $params
+     */
+    public function replyToReceivedEmail(string $receivedId, array $params): array
+    {
+        $params += ['idempotency_key' => self::newIdempotencyKey()];
+        return $this->request('POST', "/v1/received/{$receivedId}/reply", $params);
+    }
+
+    /** Inbound routes for a domain, or the test-address routes when $domainId is null. */
+    public function listInboundRoutes(?string $domainId = null): array
+    {
+        $query = $domainId === null ? '' : '?' . http_build_query(['domain_id' => $domainId]);
+        return $this->request('GET', "/v1/inbound-routes{$query}");
+    }
+
+    /** @param array<string, mixed> $params */
+    public function createInboundRoute(array $params): array
+    {
+        return $this->request('POST', '/v1/inbound-routes', $params);
+    }
+
+    /** @param array<string, mixed> $params */
+    public function updateInboundRoute(string $routeId, array $params): array
+    {
+        return $this->request('PATCH', "/v1/inbound-routes/{$routeId}", $params);
+    }
+
+    public function deleteInboundRoute(string $routeId): array
+    {
+        return $this->request('DELETE', "/v1/inbound-routes/{$routeId}");
+    }
+
     /* ---------------- Webhook signature verification ---------------- */
 
     /**
@@ -189,9 +436,6 @@ class SendByte
 
     private function request(string $method, string $path, ?array $body = null): array
     {
-        // Auto-generate an idempotency key for sends and reuse it across retries
-        // so a retried POST /v1/emails cannot double-send. Body-based, matching
-        // the API.
         if ($method === 'POST' && $path === '/v1/emails' && $body !== null && !isset($body['idempotency_key'])) {
             $body['idempotency_key'] = self::newIdempotencyKey();
         }
@@ -203,7 +447,10 @@ class SendByte
         $payload = null;
         if ($body !== null) {
             $headers[] = 'content-type: application/json';
-            $payload = json_encode($body, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            $payload = json_encode(
+                $body === [] ? new \stdClass() : $body,
+                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+            );
         }
 
         $url = $this->baseUrl . $path;
@@ -214,7 +461,6 @@ class SendByte
                     ? ($this->transport)($method, $url, $headers, $payload)
                     : $this->curlRequest($method, $url, $headers, $payload);
             } catch (SendByteException $networkError) {
-                // Transport failure (timeout, DNS): retry if attempts remain.
                 $lastError = $networkError;
                 if ($attempt < $this->maxAttempts) {
                     self::sleep(self::backoffDelay($attempt, null));
@@ -223,7 +469,6 @@ class SendByte
                 throw $networkError;
             }
 
-            // Accept [status, text] or [status, text, responseHeaders].
             $status = (int) $result[0];
             $text = (string) $result[1];
             $responseHeaders = isset($result[2]) && is_array($result[2]) ? $result[2] : [];
@@ -237,7 +482,6 @@ class SendByte
                 throw self::parseError($text, $status);
             }
 
-            // 2xx: parse the success body, guarding against a non-JSON proxy response.
             if ($text === '') {
                 return [];
             }

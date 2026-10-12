@@ -8,7 +8,7 @@ The official PHP SDK for [SendByte](https://sendbyte.africa), the email API for 
 composer require sendbyte/sendbyte-php
 ```
 
-Requires PHP 8.0 or newer.
+Requires PHP 8.1 or newer.
 
 ## Quickstart
 
@@ -71,6 +71,37 @@ $sendbyte->listWebhooks();
 $sendbyte->disableWebhook($endpoint['id']);
 $sendbyte->replayWebhookDelivery('evt_123');
 ```
+
+### Receiving email
+
+Received emails count toward your sending quota (spam does not), so receiving stays off until you turn it on.
+
+```php
+$sendbyte->enableReceiving();
+$setup = $sendbyte->enableDomainReceiving('dom_123');
+// publish $setup['mx_record'], then
+$sendbyte->checkDomainReceiving('dom_123');
+
+$page = $sendbyte->listReceivedEmails(['status' => 'received,held', 'limit' => 20]);
+$email = $sendbyte->getReceivedEmail($page['data'][0]['id']);
+echo $email['stripped_text'];
+
+$sendbyte->replyToReceivedEmail($email['id'], ['text' => 'Thanks, we are on it.']);
+$sendbyte->getEmailConversation('em_123');
+
+$route = $sendbyte->createInboundRoute([
+    'domain_id' => 'dom_123',
+    'match_type' => 'exact',
+    'match_value' => 'support',
+    'action' => 'forward',
+    'forward_to' => ['team@paylink.ng'],
+]);
+$sendbyte->listInboundRoutes('dom_123');
+$sendbyte->updateInboundRoute($route['id'], ['enabled' => false]);
+$sendbyte->deleteInboundRoute($route['id']);
+```
+
+Subscribe a webhook to `email.received` to get each email, with its body and 24-hour attachment links, as it arrives. Guide: https://docs.sendbyte.africa/guides/receiving
 
 ## Verifying webhook signatures
 
